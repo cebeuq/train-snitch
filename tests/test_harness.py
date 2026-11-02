@@ -186,6 +186,109 @@ class ControlTests(Sandbox):
         self.assertEqual(r["meter"], "none")
 
 
+class ReviewFixTests(Sandbox):
+    """Concurrency, cursor, override bounds, extends, stale pid."""
+
+    def test_concurrent_starts_leave_one_watcher(self):
+        import threading
+        from train_snitch.watcher import Watcher
+        from train_snitch import config as cfgmod
+        res, errs = [], []
+
+        def go():
+            try:
+                res.append(control.start_watch(self.cfg, rules_only=True, dry=True))
+            except control.ControlError as e:
+                errs.append(str(e))
+        ts = [threading.Thread(target=go) for _ in range(4)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        self.assertEqual(len([r for r in res if r.get("started") and not r.get("exited")]), 1, (res, errs))
+        out = os.path.join(self.runs, "demo")
+        time.sleep(3)                                   # losers retry the lock for 2 s, then exit
+        live = [p for p in control._CHILDREN.values() if p.poll() is None]
+        self.assertEqual(len(live), 1)
+        self.assertEqual(control._read_pid(out), live[0].pid)
+        # a second process (another MCP server) racing directly on the lock is refused too
+        with self.assertRaises(SystemExit) as cm:
+            Watcher(cfgmod.load(self.cfg), rules_only=True, dry=True).lock()
+        self.assertIn("already writes to", str(cm.exception))
+        self.assertTrue(control.stop_watch(out)["stopped"])
+
+    def test_tail_cursor_never_skips(self):
+        out = os.path.join(self.runs, "cur")
+        os.makedirs(out)
+        with open(os.path.join(out, "alerts.jsonl"), "w") as f:
+            for i in range(30):                         # pairs of records share one t (same cycle)
+                f.write(json.dumps({"t": 100 + i // 2, "severity": "warn", "status": "new", "rule": f"r{i}"}) + "\n")
+        seen, since = [], 99
+        for _ in range(20):
+            r = control.tail_alerts(out, n=5, since=since)
+            seen += [a["rule"] for a in r["alerts"]]
+            since = r["next_since"]
+            if not r["more"]:
+                break
+        self.assertEqual(seen, [f"r{i}" for i in range(30)])
+        r = control.tail_alerts(out, n=5)
+        self.assertEqual([a["rule"] for a in r["alerts"]], [f"r{i}" for i in range(25, 30)])
+        self.assertEqual((r["next_since"], r["more"]), (114, False))
+
+    def test_override_bounds(self):
+        cfg = self.write("capped.json", {"name": "c", "out_dir": "../runs/c", "lifecycle": {"max_hours": 2},
+                                         "judge": {"enabled": True, "model": "anthropic/claude-haiku-4-5",
+                                                   "cost_cap_usd": 1, "credit_cap": 10, "every_s": 120}})
+        bad = [{"judge": {"cost_cap_usd": 1e9}}, {"judge": {"credit_cap": 11}}, {"judge": {"max_calls": 1e9}},
+               {"judge": {"every_s": 0}}, {"judge": {"every_s": 60}}, {"lifecycle": {"max_hours": 1e6}},
+               {"cycle_s": 0}, {"cycle_s": -1}, {"cycle_s": "5"}, {"judge": {"max_tokens": True}}]
+        for ov in bad:
+            with self.assertRaises(control.ControlError, msg=ov):
+                control.check_config(cfg, ov)
+        self.assertTrue(control.check_config(self.cfg, {"judge": {"enabled": True}})["ok"])   # already on: fine
+        ok = control.check_config(cfg, {"judge": {"cost_cap_usd": 0.5, "every_s": 300}, "lifecycle": {"max_hours": 1},
+                                        "cycle_s": 30})
+        self.assertTrue(ok["ok"])
+        off = self.write("off.json", {"name": "o", "out_dir": "../runs/o", "judge": {"enabled": False}})
+        with self.assertRaises(control.ControlError) as cm:
+            control.check_config(off, {"judge": {"enabled": True}})
+        self.assertIn("may only be false", str(cm.exception))
+
+    def test_extends_and_adapter_outside_are_refused(self):
+        outside = os.path.join(self.d, "outside")
+        os.makedirs(outside)
+        with open(os.path.join(outside, "base.json"), "w") as f:
+            json.dump({"cycle_s": 30}, f)
+        with open(os.path.join(outside, "ad.py"), "w") as f:
+            f.write("raise SystemExit('must not be imported')\n")
+        for name, body, needle in (("ext.json", {"extends": "../outside/base.json", "out_dir": "../runs/e"}, "extends"),
+                                   ("ad.json", {"adapter": "../outside/ad.py:A", "out_dir": "../runs/a"}, "adapter")):
+            with self.assertRaises(control.ControlError) as cm:
+                control.check_config(self.write(name, body))
+            self.assertIn(needle, str(cm.exception))
+        self.write("inner.json", {"cycle_s": 30})
+        self.assertTrue(control.check_config(self.write("ok.json", {"extends": "inner.json", "out_dir": "../runs/k"}))["ok"])
+
+    @unittest.skipUnless(shutil.which("ps") or os.path.isdir("/proc"), "needs ps or /proc")
+    def test_stale_pid_without_lock_is_not_signalled(self):
+        out = os.path.join(self.runs, "stale")
+        os.makedirs(out)
+        # a live process that looks like a watcher by its command line but does not hold this out_dir's lock
+        p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", "train-snitch", "run", "x.json"])
+        try:
+            with open(os.path.join(out, "watcher.pid"), "w") as f:
+                f.write(str(p.pid))
+            open(os.path.join(out, "watcher.lock"), "w").close()
+            r = control.stop_watch(out)
+            self.assertFalse(r["stopped"])
+            self.assertIn("stale", r["reason"])
+            self.assertIsNone(p.poll())
+            self.assertFalse(control._summary(out)["alive"])
+        finally:
+            p.kill()
+            p.wait()
+
+
 def run_async(coro):
     return asyncio.run(coro)
 

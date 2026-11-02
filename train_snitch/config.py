@@ -158,6 +158,19 @@ def _read_chain(path: str, depth: int = 0) -> dict:
     return out
 
 
+def chain_paths(path: str, depth: int = 0) -> list[str]:
+    """Every file a config loads: itself and its `extends` parents (same resolution as _read_chain)."""
+    out = [os.path.realpath(path)]
+    try:
+        with open(path) as f:
+            parent = json.load(f).get("extends")
+    except (OSError, ValueError, AttributeError):
+        return out
+    if parent and depth <= 5:
+        out += chain_paths(os.path.join(os.path.dirname(os.path.abspath(path)), os.path.expanduser(parent)), depth + 1)
+    return out
+
+
 def resolve(cfg: dict, p: str | None) -> str | None:
     if not p:
         return p

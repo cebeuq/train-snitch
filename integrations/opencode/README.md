@@ -1,5 +1,7 @@
 # train-snitch for OpenCode
 
+0. Get the repo files (the plugin/skill files below live in a clone, not in the pip package):
+   `git clone https://github.com/cebeuq/train-snitch && cd train-snitch/integrations/opencode`
 1. Install the server once: `pipx install "train-snitch[mcp] @ git+https://github.com/cebeuq/train-snitch"`
 2. MCP: merge the `mcp` block of [opencode.json](opencode.json) into `~/.config/opencode/opencode.json` (global) or a
    project's `opencode.json`. It reads the folders from your environment (`{env:...}`).

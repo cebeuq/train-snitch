@@ -77,23 +77,60 @@ class Watcher:
 
     # ------------------------------------------------------------------ lock
     def lock(self) -> None:
+        """One watcher per out_dir. POSIX: an exclusive flock on out_dir/watcher.lock, held for the process's whole
+        life (the kernel drops it when the process dies, so a killed watcher never leaves a stale lock), then the
+        pid is written atomically to watcher.pid. Elsewhere: O_EXCL create of watcher.pid with a liveness check."""
         p = os.path.join(self.out, "watcher.pid")
-        if os.path.exists(p):
+        self._lockf = None
+        try:
+            import fcntl
+        except ImportError:
+            fcntl = None
+        if fcntl is not None:
+            f = open(os.path.join(self.out, "watcher.lock"), "a+")
+            t_end = time.time() + 2.0      # a short retry: a status probe may hold the lock for a moment
+            while True:
+                try:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError:
+                    if time.time() >= t_end:
+                        f.close()
+                        raise SystemExit(f"another watcher (pid {_pid_in(p)}) already writes to {self.out}") from None
+                    time.sleep(0.1)
+            self._lockf = f
+            tmp = f"{p}.{os.getpid()}.tmp"
+            with open(tmp, "w") as pf:
+                pf.write(str(os.getpid()))
+            os.replace(tmp, p)
+            return
+        for _ in range(2):
             try:
-                old = int(open(p).read().strip())
-                os.kill(old, 0)
-                if old != os.getpid():
-                    raise SystemExit(f"another watcher (pid {old}) already writes to {self.out}")
-            except (ValueError, ProcessLookupError, PermissionError):
-                pass
-        with open(p, "w") as f:
-            f.write(str(os.getpid()))
+                fd = os.open(p, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+            except FileExistsError:
+                old = _pid_in(p)
+                if old and old != os.getpid() and _pid_alive(old):
+                    raise SystemExit(f"another watcher (pid {old}) already writes to {self.out}") from None
+                try:
+                    os.remove(p)          # stale: its watcher is gone
+                except OSError:
+                    pass
+                continue
+            with os.fdopen(fd, "w") as pf:
+                pf.write(str(os.getpid()))
+            return
+        raise SystemExit(f"cannot take the watcher lock in {self.out}")
 
     def unlock(self) -> None:
-        try:
-            os.remove(os.path.join(self.out, "watcher.pid"))
-        except OSError:
-            pass
+        p = os.path.join(self.out, "watcher.pid")
+        if _pid_in(p) == os.getpid():      # never remove a pid file another watcher wrote
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        if getattr(self, "_lockf", None) is not None:
+            self._lockf.close()            # releases the flock
+            self._lockf = None
 
     # ------------------------------------------------------------------ helpers
     def deadline(self, start: float) -> float:
@@ -286,6 +323,24 @@ class Watcher:
 
 class _GiveUp(Exception):
     pass
+
+
+def _pid_in(path: str):
+    try:
+        with open(path) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
 
 
 def test_record(cfg: dict) -> dict:

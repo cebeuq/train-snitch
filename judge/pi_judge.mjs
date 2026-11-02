@@ -181,7 +181,8 @@ function agentTools() {
 }
 
 // one AgentSession run (per model); turns are counted per run in `cur` and in total in out.turns
-async function runAgent(model, rewriteFn, thinkingLevel, timeoutMs) {
+// streamOpts (chain, non-Codex): maxTokens / temperature / timeoutMs merged into every turn's Pi stream options
+async function runAgent(model, rewriteFn, thinkingLevel, timeoutMs, streamOpts) {
   const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } = piAgent;
   cur = { turns: 0 };
   out.error = undefined;
@@ -202,6 +203,10 @@ async function runAgent(model, rewriteFn, thinkingLevel, timeoutMs) {
     cwd, model, thinkingLevel, modelRuntime: rt, resourceLoader, settingsManager,
     sessionManager: SessionManager.inMemory(cwd), noTools: "builtin", customTools: tools, tools: tools.map((t) => t.name),
   });
+  if (streamOpts && session.agent && typeof session.agent.streamFn === "function") {
+    const base = session.agent.streamFn;
+    session.agent.streamFn = (m, context, options) => base(m, context, { ...options, ...streamOpts });
+  }
   let last = null, aborted = false;
   session.subscribe((ev) => {
     if (ev.type === "turn_end") {
@@ -248,7 +253,8 @@ async function runChain() {
 
 function kindOf(msg, stopReason) {
   const m = String(msg || "");
-  if (/usage_limit|rate.?limit|\b429\b|insufficient|quota|credits? (?:exhausted|depleted)/i.test(m)) return "rate_limit";
+  // Pi words a Codex 429 as "You have hit your ChatGPT usage limit (... plan). Try again in ~N min."
+  if (/usage.?limit|rate.?limit|\b429\b|insufficient|quota|credits? (?:exhausted|depleted)/i.test(m)) return "rate_limit";
   if (/\b40[13]\b|unauthori[sz]ed|forbidden|api key|no credentials|authentication|invalid.*key/i.test(m)) return "no_auth";
   if (stopReason === "aborted" || /time(?:d)? ?out|abort/i.test(m)) return "timeout";
   return "error";
@@ -299,7 +305,12 @@ async function tryCandidate(c, leftMs) {
     if (msg.stopReason === "error" || msg.stopReason === "aborted") return { kind: kindOf(msg.errorMessage, msg.stopReason), error: msg.errorMessage || msg.stopReason };
     return { kind: "unparseable", error: "unparseable reply", raw: raw.slice(0, 500) };
   }
-  const { last, aborted } = await runAgent(m, rewriteC, level, leftMs);
+  // Codex keeps its original agent request; other providers get the candidate's limits on every turn
+  const streamOpts = codex ? undefined : {
+    maxTokens: c.max_tokens || req.max_tokens || 500, timeoutMs: c.request_timeout_ms || 60000,
+    ...(c.temperature !== undefined && c.temperature !== null ? { temperature: c.temperature } : {}),
+  };
+  const { last, aborted } = await runAgent(m, rewriteC, level, leftMs, streamOpts);
   const raw = textOf(last);
   const v = parseVerdict(raw);
   if (v) return { verdict: v };

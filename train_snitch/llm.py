@@ -33,6 +33,9 @@ REQUEST_KEYS = ("api", "base_url", "api_key_env", "no_auth", "headers", "compat"
                 "temperature", "request_timeout_s", "structured_output", "fallbacks", "fallback_on")
 MODEL_INFO_KEYS = {"context_window": "contextWindow", "max_tokens": "maxTokens", "reasoning": "reasoning",
                    "input": "input", "cost": "cost", "name": "name"}
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[^\s!$`;|&<>]\S*$")
+# APIs where the bridge can add a strict JSON schema; structured_output "schema" is a no-op elsewhere
+SCHEMA_APIS = ("openai-completions", "openai-responses", "google-generative-ai")
 ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 ENV_REF = re.compile(r"^\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)$")
 SECRETISH = re.compile(r"key|token|secret|auth|password|bearer", re.I)
@@ -101,7 +104,7 @@ def validate(j: dict) -> tuple[list[str], list[str]]:
 def _check_candidate(c: dict, where: str, errs: list, warns: list, primary: bool = False) -> None:
     m = c.get("model")
     provider, mid = split_model(m)
-    if not isinstance(m, str) or not provider or not mid:
+    if not isinstance(m, str) or not provider or not mid or not MODEL_RE.match(m):
         errs.append(f"{where}.model must be \"provider/id\" as Pi knows it (e.g. openai-codex/gpt-6-luna, "
                     f"anthropic/claude-haiku-4-5, ollama/qwen3:8b); got {m!r}")
     api = c.get("api")
@@ -109,6 +112,11 @@ def _check_candidate(c: dict, where: str, errs: list, warns: list, primary: bool
         errs.append(f"{where}.api must be one of {', '.join(APIS)}")
     if api and not c.get("base_url"):
         errs.append(f"{where}: api is set, so base_url is required (a custom provider needs an endpoint)")
+    if c.get("base_url") and not api:
+        warns.append(f"{where}: base_url without api only works for a provider Pi already knows (it keeps that "
+                     f"provider's request format); for a new provider name such as {provider!r} also set api")
+    if c.get("structured_output") == "schema" and api and api not in SCHEMA_APIS:
+        warns.append(f"{where}: structured_output \"schema\" has no effect with api {api}; the prompt asks for JSON")
     bu = c.get("base_url")
     if bu is not None and (not isinstance(bu, str) or not re.match(r"^https?://", bu)):
         errs.append(f"{where}.base_url must be an http(s) URL")

@@ -188,12 +188,39 @@ class JudgeChainTests(unittest.TestCase):
         j.maybe(1060, [], [], {})
         self.assertEqual([c["model"] for c in reqs[1]["candidates"]], ["a/x", "b/y"])
 
-    def test_every_candidate_rate_limited_goes_rules_only(self):
-        res = {"turns": 1, "error": "all failed", "attempts": [{"model": "a/x", "error_kind": "rate_limit"},
-                                                               {"model": "b/y", "error_kind": "rate_limit"}]}
-        j, st = self.mk(lambda r: res, model="a/x", fallbacks=["b/y"])
+    def test_every_codex_candidate_rate_limited_goes_rules_only(self):
+        res = {"turns": 1, "error": "You have hit your ChatGPT usage limit (plus plan). Try again in ~42 min.",
+               "attempts": [{"model": "openai-codex/gpt-6-luna", "error_kind": "rate_limit"},
+                            {"model": "openai-codex/gpt-5.6-luna", "error_kind": "rate_limit"}]}
+        j, st = self.mk(lambda r: res, fallbacks=["openai-codex/gpt-5.6-luna"])
         out = j.maybe(1000, [], [], {})
         self.assertEqual(out[-1]["rule"], "judge_off")
+
+    def test_other_providers_rate_limited_pause_not_off(self):
+        calls = []
+        rl = lambda m: {"turns": 1, "error": "429", "attempts": [{"model": m, "error_kind": "rate_limit"}]}
+        ok = {"turns": 1, "verdict": dict(VERDICT, decision="ok", severity="info"), "model_used": "b/y",
+              "attempts": [{"model": "a/x", "error_kind": "rate_limit"}, {"model": "b/y", "ok": True}]}
+        script = [ok, rl("b/y"), rl("a/x")]
+        j, st = self.mk(lambda r: calls.append(r) or script.pop(0), model="a/x", fallbacks=["b/y"],
+                        max_consecutive_errors=1)
+        j.maybe(1000, [], [], {})                                   # a/x 429 -> cooldown; b/y answers
+        self.assertEqual(j.maybe(1060, [], [], {}), [])             # only b/y sent; it 429s too
+        self.assertEqual([c["model"] for c in calls[1]["candidates"]], ["b/y"])
+        self.assertIsNone(st["judge"]["rules_only"])                # not switched off, not counted as an error
+        self.assertEqual(st["judge"]["errors_in_row"], 0)
+        self.assertEqual(j.maybe(1120, [], [], {}), [])             # paused: no call while both cool down
+        self.assertEqual(len(calls), 2)
+        j.maybe(1000 + 15 * 60 + 1, [], [], {})                     # a/x's cooldown is over: judging again
+        self.assertEqual(len(calls), 3)
+        self.assertIsNone(st["judge"]["rules_only"])
+
+    def test_single_non_codex_model_429_does_not_switch_off(self):
+        res = {"turns": 1, "error": "429 rate limit", "attempts": [{"model": "groq/m", "error_kind": "rate_limit"}]}
+        j, st = self.mk(lambda r: res, model="groq/m")
+        self.assertEqual(j.maybe(1000, [], [], {}), [])
+        self.assertIsNone(st["judge"]["rules_only"])
+        self.assertGreater(st["judge"]["paused_until"], 1000)
 
     def test_cost_cap_usd(self):
         res = {"turns": 1, "verdict": dict(VERDICT, decision="ok", severity="info"), "usage": {"input": 1, "output": 1, "cost": 0.6}}
@@ -336,6 +363,16 @@ class BridgeChainTests(unittest.TestCase):
                        "candidates": [{"model": "nope/missing-model"}, {"model": "faux-judge/faux-judge", "reasoning": "off"}],
                        "faux": [{"tool": "read_log", "args": {"source": "trainer", "grep": "Error"}}, self.FAUX]})
         self.assertEqual((r["ok"], r["turns"], r["model_used"]), (True, 2, "faux-judge/faux-judge"))
+
+    def test_agent_mode_applies_max_tokens_and_temperature(self):
+        FakeOpenAI.seen.clear()
+        c = self.local("ollama/qwen3:8b", no_auth=True, temperature=0.2, max_tokens=123,
+                       compat={"supportsDeveloperRole": False, "supportsReasoningEffort": False})
+        r = self.call({"mode": "agent", "max_turns": 3, "data": {"logs": {"trainer": ["ok"]}}, "candidates": [c]})
+        self.assertTrue(r["ok"], r)
+        body = FakeOpenAI.seen[-1]["body"]
+        self.assertEqual(body.get("max_completion_tokens", body.get("max_tokens")), 123)
+        self.assertEqual(body.get("temperature"), 0.2)
 
     def test_legacy_request_still_works(self):
         r = self.call({"faux": [self.FAUX]})               # no candidates: the original path

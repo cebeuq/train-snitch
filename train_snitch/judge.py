@@ -37,6 +37,8 @@ from .timeutil import fmt12
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PI_PKG_NAME = "@earendil-works/pi-coding-agent"
+# provider refusals. Pi 0.80.x words a Codex 429 as "You have hit your ChatGPT usage limit (... plan). Try again in ~N min."
+RATE_LIMIT = re.compile(r"usage.?limit|rate.?limit|\b429\b|insufficient|quota|credits? (?:exhausted|depleted)", re.I)
 
 
 def asset_dir() -> str:
@@ -135,6 +137,8 @@ class Judge:
     def maybe(self, t: float, recs: list[dict], active: list[dict], ctx: dict) -> list[dict]:
         if not self.j.get("enabled") or self.st.get("rules_only"):
             return []
+        if float(self.st.get("paused_until") or 0) > t:     # every model of the chain is rate-limited right now
+            return []
         every = float(self.j.get("every_s", 60))
         if t - self.st["last_call_t"] < every - 2:
             return []
@@ -184,9 +188,20 @@ class Judge:
             out += self._off(f"judge spend ${self.st['cost_usd']:.4f} (Pi's cost figure) over the per-run cap of ${float(cap_usd):g}")
         if self.st.get("rules_only"):
             return out
-        att = res.get("attempts")      # model chain: refused only when every candidate was rate-limited
-        if (all(a.get("error_kind") == "rate_limit" for a in att) if att else
-                re.search(r"usage_limit|rate_limit|429|insufficient|quota|credits? (?:exhausted|depleted)", err, re.I)):
+        att = res.get("attempts")
+        if not v and att and all(a.get("error_kind") == "rate_limit" for a in att):
+            chain = [c.get("model") for c in llm.candidates(self.j)]
+            if {a.get("model") for a in att} >= set(chain) and all(llm.split_model(m)[0] == llm.CODEX for m in chain):
+                # Codex only: a usage limit is account-wide and lasts hours; same back-off as the 0.1 single-model path
+                return out + self._off(f"provider refused: {err[:120]}")
+            # other providers: a 429 is usually per minute; pause until the first model's cooldown ends, no error count
+            cool = self.st.get("cooldown") or {}
+            until = min((cool.get(m, t) for m in chain), default=t)
+            if until > t:
+                self.st["paused_until"] = until
+                self.log(f"judge: every model rate-limited; paused until {fmt12(until, seconds=True)}")
+            return out
+        if not att and RATE_LIMIT.search(err):
             return out + self._off(f"provider refused: {err[:120]}")
         if not v:
             self.st["errors_in_row"] += 1

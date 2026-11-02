@@ -77,18 +77,23 @@ the dependency visible. When train-snitch is started by an agent harness, see
    that Pi has credentials for it, and makes the call:
    - `openai-codex`: the original call (`complete()` with `reasoningEffort`, strict schema, `x-codex-*` headers).
    - any other provider: Pi's portable `completeSimple()` with the thinking level.
-   - agent mode (a new rule alert): a Pi `AgentSession` with the same read-only tools, on that model.
+   - agent mode (a new rule alert): a Pi `AgentSession` with the same read-only tools, on that model. Non-Codex
+     models get the candidate's `max_tokens`, `temperature` and `request_timeout_s` on every turn too.
 3. On a failure kind listed in `fallback_on`, it moves to the next candidate, all inside `timeout_s`.
 4. The reply carries `model_used` and `attempts` (`judge.jsonl`); alerts carry `judge_model` = the model that
    answered. Every model turn counts toward `max_calls`.
-5. The judge turns off for the run (rules continue) when every candidate was rate-limited, after
-   `max_consecutive_errors` failed judgments, at `credit_cap` (Codex), or at `cost_cap_usd`.
+5. Rate limits: a rate-limited model is skipped for `fallback_cooldown_min` (default 15). When every model of the
+   chain is rate-limited, the judge pauses until the first cooldown ends (no error counted), except for a chain of
+   only `openai-codex` models: a ChatGPT usage limit is account-wide, so, as in 0.1, the judge turns off for the run.
+6. The judge also turns off for the run (rules continue) after `max_consecutive_errors` failed judgments, at
+   `credit_cap` (Codex), or at `cost_cap_usd`.
 
 ### `structured_output`
 
 - `schema`: a strict JSON schema in the request, in the API's own format: `text.format` (OpenAI / Codex / Azure
   Responses), `response_format` (Chat Completions: OpenAI-compatible servers, vLLM, Ollama, llama.cpp), or
-  `responseJsonSchema` (Google). Not available for Anthropic, Bedrock and Mistral APIs: the prompt is used there.
+  `responseJsonSchema` (Google). Not available for Anthropic, Bedrock and Mistral APIs: the prompt is used there
+  (`check` warns when `schema` is set with such an `api`).
 - `prompt`: the system prompt asks for JSON and the bridge parses it defensively.
 - `auto` (default): `schema` on the Responses APIs, `prompt` elsewhere. Set `schema` for local servers that support
   it (vLLM, Ollama, llama.cpp); small local models follow it much better.
@@ -99,6 +104,8 @@ the dependency visible. When train-snitch is started by an agent harness, see
   or keep the `openai-codex/gpt-5.6-luna` fallback.
 - Pi cannot reuse a Gemini CLI, Cursor or Claude Code login. Use a Gemini API key / Vertex, OpenRouter, or Pi's own
   Anthropic login.
+- `base_url` without `api` only overrides the endpoint of a provider Pi already knows. A new provider name needs
+  `api` too (`check` warns), or Pi rejects the registration and the chain stops there.
 - Ollama works through its OpenAI-compatible `/v1` endpoint, not its native `/api`. Vendors without an
   OpenAI/Anthropic/Google-compatible API need a Pi extension provider.
 - `cost_cap_usd` is only as accurate as Pi's cost table for the model (or your `model_info.cost`). Local servers

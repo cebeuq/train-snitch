@@ -265,7 +265,8 @@ class JudgeTests(unittest.TestCase):
         self.assertIn("3 model errors in a row", out[0]["what"])
 
     def test_usage_limit_switches_off(self):
-        j, st = self.mk(lambda req: {"turns": 1, "error": "429 usage_limit_reached"})
+        # Pi 0.80.10's wording of a Codex 429 (pi-ai openai-codex-responses parseErrorResponse)
+        j, st = self.mk(lambda req: {"turns": 1, "error": "You have hit your ChatGPT usage limit (plus plan). Try again in ~42 min."})
         out = j.maybe(5000, [self.rec()], [], {})
         self.assertEqual(out[-1]["rule"], "judge_off")
 

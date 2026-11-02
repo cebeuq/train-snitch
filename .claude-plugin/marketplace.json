@@ -1,6 +1,11 @@
 {
   "name": "train-snitch",
-  "owner": { "name": "train-snitch maintainers" },
+  "owner": {
+    "name": "train-snitch maintainers"
+  },
+  "metadata": {
+    "description": "train-snitch: a read-only watchdog for ML training runs, as a Claude Code plugin"
+  },
   "plugins": [
     {
       "name": "train-snitch",

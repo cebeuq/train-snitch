@@ -6,8 +6,7 @@
       "args": [],
       "env": {
         "TRAIN_SNITCH_CONFIG_DIRS": "/ABS/PATH/configs",
-        "TRAIN_SNITCH_OUT_DIRS": "/ABS/PATH/runs",
-        "TRAIN_SNITCH_ENV_FILE": "/ABS/PATH/train-snitch.env"
+        "TRAIN_SNITCH_OUT_DIRS": "/ABS/PATH/runs"
       },
       "tools": ["*"]
     }

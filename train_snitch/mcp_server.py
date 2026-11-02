@@ -61,7 +61,8 @@ def build_server():
                     include_ongoing: bool = False) -> dict[str, Any]:
         """Newest alert records (alerts.jsonl), filtered like `train-snitch tail`: severity >= min_severity
         (info|warn|critical), plus judge false-alarm notes, eval-judge records, TEST records and start/exit records.
-        To follow a watcher, call again with since=<next_since from the previous call>."""
+        Without `since`: the newest n. To follow a watcher, call again with since=<next_since from the previous
+        call>: you then get the oldest n newer records, and `more: true` means call again at once."""
         return call(control.tail_alerts, run, n=n, min_severity=min_severity, since=since, include_ongoing=include_ongoing)
 
     @server.tool(annotations=ro)

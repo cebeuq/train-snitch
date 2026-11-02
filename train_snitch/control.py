@@ -23,6 +23,7 @@ import signal
 import stat
 import subprocess
 import sys
+import threading
 import time
 
 from . import config as cfgmod
@@ -45,6 +46,14 @@ SAFE_JUDGE = {"enabled", "model", "fallbacks", "fallback_on", "fallback_cooldown
               "max_quiet_min", "agent_on_anomaly", "max_turns", "timeout_s", "structured_output"}
 
 _CHILDREN: dict[int, subprocess.Popen] = {}   # watchers started by this process (reaped on every call)
+_LOCK = threading.RLock()     # the MCP SDK runs sync tools in worker threads: guards _CHILDREN and start/stop
+
+# inline override bounds: caps may only tighten what the config file set; cadences may only slow down
+TIGHTEN_JUDGE = ("credit_cap", "cost_cap_usd", "max_calls", "max_turns")
+NUMERIC_JUDGE = {"every_s": (1, 86400), "credit_cap": (0, None), "cost_cap_usd": (0, None), "max_calls": (0, None),
+                 "max_turns": (1, 10), "max_tokens": (1, 8000), "timeout_s": (5, 600), "max_quiet_min": (0, 1440),
+                 "fallback_cooldown_min": (0, 1440), "temperature": (0, 2)}
+MIN_CYCLE_S = 5
 
 
 class ControlError(Exception):
@@ -91,7 +100,13 @@ def _need_roots(roots: list[str], var: str) -> None:
 
 
 # ---------------------------------------------------------------- config
-def check_overrides(ov) -> list[str]:
+def _num(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def check_overrides(ov, base: dict | None = None) -> list[str]:
+    """Allowlist + bounds for inline overrides. With `base` (the config file merged over the defaults), spend and
+    lifetime caps may only be lowered, every_s only raised, and the judge only switched off, never on."""
     if ov is None:
         return []
     if not isinstance(ov, dict):
@@ -111,6 +126,36 @@ def check_overrides(ov) -> list[str]:
     r = ov.get("rules")
     if r is not None and (not isinstance(r, dict) or any(not isinstance(v, dict) for v in r.values())):
         errs.append("overrides.rules must map rule names to objects (thresholds or {\"enabled\": false})")
+    if errs:
+        return errs
+    if "cycle_s" in ov and (not _num(ov["cycle_s"]) or ov["cycle_s"] < MIN_CYCLE_S):
+        errs.append(f"overrides.cycle_s must be a number >= {MIN_CYCLE_S}")
+    if "name" in ov and not isinstance(ov["name"], str):
+        errs.append("overrides.name must be a string")
+    lc = ov.get("lifecycle") or {}
+    blc = (base or {}).get("lifecycle") or {}
+    if "max_hours" in lc:
+        v, cap = lc["max_hours"], blc.get("max_hours")
+        if not _num(v) or v <= 0:
+            errs.append("overrides.lifecycle.max_hours must be a positive number")
+        elif _num(cap) and v > cap:
+            errs.append(f"overrides.lifecycle.max_hours may only lower the config's {cap:g} h")
+    if "deadline_epoch" in lc and lc["deadline_epoch"] is not None and not _num(lc["deadline_epoch"]):
+        errs.append("overrides.lifecycle.deadline_epoch must be a number")
+    j = ov.get("judge") or {}
+    bj = (base or {}).get("judge") or {}
+    for k, (lo, hi) in NUMERIC_JUDGE.items():
+        if k not in j:
+            continue
+        v = j[k]
+        if not _num(v) or v < lo or (hi is not None and v > hi):
+            errs.append(f"overrides.judge.{k} must be a number" + (f" from {lo:g} to {hi:g}" if hi is not None else f" >= {lo:g}"))
+        elif k in TIGHTEN_JUDGE and _num(bj.get(k)) and v > bj[k]:
+            errs.append(f"overrides.judge.{k} may only lower the config's {bj[k]:g}")
+        elif k == "every_s" and _num(bj.get(k)) and v < bj[k]:
+            errs.append(f"overrides.judge.every_s may only raise the config's {bj[k]:g} s")
+    if "enabled" in j and (not isinstance(j["enabled"], bool) or (j["enabled"] and base is not None and not bj.get("enabled"))):
+        errs.append("overrides.judge.enabled may only be false inline (enable the judge in the config file)")
     return errs
 
 
@@ -124,13 +169,25 @@ def load_config(config: str, overrides: dict | None = None) -> dict:
         raise ControlError(f"config {path} is outside the allowed config folders ({ENV_CONFIG_DIRS}: {', '.join(roots)})")
     if not os.path.isfile(path):
         raise ControlError(f"config not found: {path}")
+    for p in cfgmod.chain_paths(path)[1:]:          # `extends` parents must sit in the allowed folders too
+        if not _under(p, roots):
+            raise ControlError(f"config {path} extends {p}, which is outside the allowed config folders ({ENV_CONFIG_DIRS})")
     errs = check_overrides(overrides)
     if errs:
         raise ControlError("; ".join(errs))
     try:
+        base = cfgmod.load(path, None)
+        errs = check_overrides(overrides, base)
+        if errs:
+            raise ControlError("; ".join(errs))
         cfg = cfgmod.load(path, overrides or None)
     except (OSError, ValueError) as e:
         raise ControlError(f"cannot read config {path}: {e}") from None
+    ad = cfg.get("adapter") or "generic"
+    if ad not in ("generic", "generic-files"):       # a custom adapter is code: same folder rule as the config
+        ap = os.path.realpath(cfgmod.resolve(cfg, ad.partition(":")[0]))
+        if not _under(ap, roots):
+            raise ControlError(f"the config's adapter {ap} is outside the allowed config folders ({ENV_CONFIG_DIRS})")
     oroots = out_roots()
     if not _under(cfg["out_dir"], oroots):
         raise ControlError(f"the config's out_dir {cfg['out_dir']} is outside the allowed output folders "
@@ -194,9 +251,10 @@ def child_env() -> dict[str, str]:
 
 # ---------------------------------------------------------------- processes
 def _reap() -> None:
-    for pid, p in list(_CHILDREN.items()):
-        if p.poll() is not None:
-            del _CHILDREN[pid]
+    with _LOCK:
+        for pid, p in list(_CHILDREN.items()):
+            if p.poll() is not None:
+                del _CHILDREN[pid]
 
 
 def _read_pid(out_dir: str):
@@ -210,7 +268,8 @@ def _read_pid(out_dir: str):
 def _alive(pid) -> bool:
     if not pid:
         return False
-    if pid in _CHILDREN and _CHILDREN[pid].poll() is not None:
+    ch = _CHILDREN.get(pid)
+    if ch is not None and ch.poll() is not None:
         return False
     try:
         os.kill(pid, 0)
@@ -238,6 +297,38 @@ def _is_watcher(pid: int) -> bool:
     return bool(WATCHER_CMD.search(c)) and bool(re.search(r"(?:^|\s)run(?:\s|$)", c))
 
 
+def _lock_held(out_dir: str):
+    """True when some process holds out_dir/watcher.lock (a live watcher took it before writing watcher.pid),
+    False when nobody does (watcher.pid is stale), None when this cannot be told (no flock, or an older watcher)."""
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    p = os.path.join(out_dir, "watcher.lock")
+    if not os.path.exists(p):
+        return None
+    try:
+        with open(p, "a+") as f:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except OSError:
+                return True
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            return False
+    except OSError:
+        return None
+
+
+def _owner(out_dir: str):
+    """The pid of the live watcher that owns out_dir, else None. A pid counts only if the process is alive, its
+    command line is a train-snitch watcher and the out_dir's lock is held, so a reused pid from a killed watcher
+    is never signalled."""
+    pid = _read_pid(out_dir)
+    if not _alive(pid) or not _is_watcher(pid) or _lock_held(out_dir) is False:
+        return None
+    return pid
+
+
 def _read_json(path: str):
     try:
         with open(path) as f:
@@ -253,8 +344,8 @@ def _is_out_dir(d: str) -> bool:
 
 def _summary(d: str) -> dict:
     st = _read_json(os.path.join(d, "status.json")) or {}
-    pid = _read_pid(d)
-    alive = _alive(pid) and _is_watcher(pid)
+    pid = _owner(d)
+    alive = pid is not None
     active = st.get("active") or []
     worst = max((a.get("severity", "info") for a in active), key=lambda s: SEV.get(s, 0), default=None)
     return {"run": st.get("name") or os.path.basename(d), "out_dir": d, "alive": alive, "pid": pid if alive else None,
@@ -320,7 +411,7 @@ def latest(run: str) -> dict:
     return {"run": d, "latest": text or "(no warn+ alert yet)"}
 
 
-def _tail_lines(path: str, max_bytes: int = 512 * 1024) -> list[str]:
+def _tail_lines(path: str, max_bytes: int = 512 * 1024, clipped: list | None = None) -> list[str]:
     try:
         with open(path, "rb") as f:
             f.seek(0, 2)
@@ -329,25 +420,42 @@ def _tail_lines(path: str, max_bytes: int = 512 * 1024) -> list[str]:
             data = f.read()
     except OSError:
         return []
+    if clipped is not None:
+        clipped.append(size > max_bytes)
     lines = data.decode("utf-8", "replace").splitlines()
     return lines[1:] if size > max_bytes else lines
 
 
+FOLLOW_WINDOW = 16 * 1024 * 1024     # bytes of alerts.jsonl read when following with `since`
+
+
 def tail_alerts(run: str, n: int = 20, min_severity: str = "warn", since: float | None = None,
                 include_ongoing: bool = False) -> dict:
-    """The newest alerts, filtered like `train-snitch tail`: warn+ (or min_severity), judge false-alarm notes,
-    eval-judge records, TEST records and the watcher's exit record. Pass `next_since` back as `since` to follow."""
+    """Alerts filtered like `train-snitch tail`: warn+ (or min_severity), judge false-alarm notes, eval-judge
+    records, TEST records and the watcher's start/exit records.
+    Without `since`: the newest n. With `since`: the OLDEST n newer than it (`more` says whether more are
+    waiting); pass `next_since` back as `since` to follow without losing any record."""
     d = resolve_run(run)
     if min_severity not in SEV:
         raise ControlError(f"min_severity must be one of {', '.join(SEV)}")
     n = max(1, min(int(n or 20), 200))
-    out = []
-    for line in _tail_lines(os.path.join(d, "alerts.jsonl")):
+    if since is not None:
+        try:
+            since = float(since)
+        except (TypeError, ValueError):
+            raise ControlError("since must be the number next_since from a previous call") from None
+    clipped: list = []
+    lines = _tail_lines(os.path.join(d, "alerts.jsonl"), FOLLOW_WINDOW if since is not None else 512 * 1024, clipped)
+    out, newest, oldest = [], since or 0.0, None
+    for line in lines:
         try:
             r = json.loads(line)
-        except ValueError:
+            t = float(r.get("t") or 0)
+        except (ValueError, TypeError, AttributeError):
             continue
-        if since is not None and float(r.get("t") or 0) <= float(since):
+        oldest = t if oldest is None else min(oldest, t)
+        newest = max(newest, t)
+        if since is not None and t <= since:
             continue
         special = (r.get("source") == "judge" and r.get("about")) or r.get("source") == "eval_judge" or r.get("test") \
             or r.get("rule") in ("watcher_exit", "watcher_start", "judge_off")
@@ -357,10 +465,22 @@ def tail_alerts(run: str, n: int = 20, min_severity: str = "warn", since: float 
             if r.get("status") == "ongoing" and r.get("severity") != "critical" and not include_ongoing:
                 continue
         out.append(r)
-    out = out[-n:]
-    nxt = max([float(r.get("t") or 0) for r in out] + [float(since or 0)])
-    s = _summary(d)
-    return {"run": d, "alive": s["alive"], "alerts": out, "next_since": nxt or None}
+    more = False
+    if since is None:
+        out = out[-n:]
+        nxt = newest                         # everything up to the end of the file has been seen
+    else:
+        k = min(n, len(out))
+        while 0 < k < len(out) and float(out[k].get("t") or 0) == float(out[k - 1].get("t") or 0):
+            k += 1                           # never split records of one cycle (same t) across two calls
+        more = k < len(out)
+        out = out[:k]
+        nxt = float(out[-1].get("t") or 0) if more else newest
+    res = {"run": d, "alive": _summary(d)["alive"], "alerts": out, "next_since": nxt or None, "more": more}
+    if since is not None and clipped and clipped[0] and oldest is not None and oldest > since:
+        res["gap"] = (f"since is older than the last {FOLLOW_WINDOW // (1024 * 1024)} MB of alerts.jsonl; older "
+                      "records were not read (open the file to see them)")
+    return res
 
 
 # ---------------------------------------------------------------- start / stop
@@ -375,19 +495,22 @@ def start_watch(config: str, overrides: dict | None = None, rules_only: bool = F
         if errs:
             raise ControlError("invalid judge config: " + "; ".join(errs))
     out = cfg["out_dir"]
-    pid = _read_pid(out)
-    if _alive(pid) and _is_watcher(pid):
-        raise ControlError(f"a watcher (pid {pid}) already writes to {out}; stop_watch it first or use another out_dir")
-    os.makedirs(out, exist_ok=True)
     argv = [sys.executable, "-I", "-c", BOOT, PKG_ROOT, "run", cfg["_path"]]
     argv += [f for f, on in (("--rules-only", rules_only), ("--dry", dry), ("--once", once), ("--test-alert", test_alert)) if on]
     if overrides:
         argv += ["--overrides", json.dumps(overrides, sort_keys=True)]
     env = child_env()
-    with open(os.path.join(out, "watcher.out"), "ab") as log:
-        p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, env=env,
-                             cwd=os.path.dirname(cfg["_path"]), start_new_session=True, close_fds=True)
-    _CHILDREN[p.pid] = p
+    # The watcher's own flock on out_dir/watcher.lock is what guarantees one watcher per out_dir (also across
+    # several MCP servers); this check only gives a clear error early. _LOCK serialises starts in this server.
+    with _LOCK:
+        pid = _owner(out) if os.path.isdir(out) else None
+        if pid:
+            raise ControlError(f"a watcher (pid {pid}) already writes to {out}; stop_watch it first or use another out_dir")
+        os.makedirs(out, exist_ok=True)
+        with open(os.path.join(out, "watcher.out"), "ab") as log:
+            p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, env=env,
+                                 cwd=os.path.dirname(cfg["_path"]), start_new_session=True, close_fds=True)
+        _CHILDREN[p.pid] = p
     t_end = time.time() + wait_s
     while time.time() < t_end:
         if _read_pid(out) == p.pid or p.poll() is not None:
@@ -400,6 +523,9 @@ def start_watch(config: str, overrides: dict | None = None, rules_only: bool = F
     if rc is None:
         return {"started": True, **res}
     tail = _tail_lines(os.path.join(out, "watcher.out"), 4000)[-12:]
+    if rc != 0 and any("already writes to" in x for x in tail):
+        raise ControlError(f"another watcher already writes to {out} (it started at the same moment); "
+                           "stop_watch it first or use another out_dir")
     return {"started": rc == 0 and once, "exited": True, "returncode": rc, "output_tail": tail, **res}
 
 
@@ -412,12 +538,16 @@ def stop_watch(run: str, wait_s: float = 15.0) -> dict:
         return {"run": d, "stopped": False, "reason": "no live watcher for this out_dir"}
     if not _is_watcher(pid):
         raise ControlError(f"pid {pid} in {d}/watcher.pid is not a train-snitch watcher; refusing to signal it")
+    if _lock_held(d) is False:
+        return {"run": d, "stopped": False, "reason": f"watcher.pid is stale (pid {pid} does not hold this out_dir's "
+                                                       "lock; it belongs to another process now); nothing signalled"}
     os.kill(pid, signal.SIGTERM)
     t_end = time.time() + wait_s
     while time.time() < t_end and _alive(pid):
-        if pid in _CHILDREN:
+        ch = _CHILDREN.get(pid)
+        if ch is not None:
             try:
-                _CHILDREN[pid].wait(timeout=0.2)
+                ch.wait(timeout=0.2)
             except subprocess.TimeoutExpired:
                 pass
         else:

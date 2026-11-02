@@ -4,7 +4,7 @@
 #   docker run --rm --network none train-snitch-test
 FROM node:24-bookworm-slim
 ARG PI_VERSION=0.80.10
-ARG MCP_SPEC="mcp>=1.10,<3"
+ARG MCP_SPEC="mcp>=2.0,<3"
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ffmpeg procps tzdata \
     && rm -rf /var/lib/apt/lists/*
 RUN npm install -g "@earendil-works/pi-coding-agent@${PI_VERSION}" && npm cache clean --force

@@ -80,6 +80,7 @@ export TRAIN_SNITCH_CONFIG_DIRS=/ABS/PATH/configs TRAIN_SNITCH_OUT_DIRS=/ABS/PAT
 claude plugin marketplace add cebeuq/train-snitch && claude plugin install train-snitch@train-snitch   # Claude Code
 codex mcp add train-snitch --env TRAIN_SNITCH_CONFIG_DIRS=/ABS/PATH/configs -- train-snitch-mcp        # Codex
 copilot mcp add train-snitch --env TRAIN_SNITCH_CONFIG_DIRS=/ABS/PATH/configs -- train-snitch-mcp      # Copilot CLI
+git clone https://github.com/cebeuq/train-snitch && cd train-snitch    # Antigravity / Gemini CLI install from a clone
 agy plugin install ./integrations/antigravity && agy plugin enable train-snitch                       # Antigravity
 gemini extensions install ./integrations/gemini-cli                                                    # Gemini CLI
 # Cursor: integrations/cursor/mcp.json -> ~/.cursor/mcp.json; OpenCode: integrations/opencode/opencode.json

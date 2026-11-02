@@ -10,12 +10,15 @@ Alerts go to `alerts.jsonl`, `latest.txt` and `status.json` in the run's `out_di
 - `status(run)`: the heartbeat: active alerts, the judge's last verdict, budget, deadline.
   `run` is an out_dir path or a run name from `list_watches`.
 - `latest(run)`: the newest warn+ alert in plain text plus every still-active problem.
-- `tail_alerts(run, n=20, min_severity="warn", since=None)`: new alert records. To follow a run, call it again
-  with `since` set to the `next_since` from the previous call.
+- `tail_alerts(run, n=20, min_severity="warn", since=None)`: the newest alert records. To follow a run, call it
+  again with `since` set to the `next_since` from the previous call; if the reply says `more: true`, call again
+  at once (it returns the oldest unread records first, so none are skipped).
 - `check_config(config)`: validate a run config and show the judge model chain. Runs nothing.
 - `start_watch(config, rules_only=False, dry=False, once=False, test_alert=False, overrides=None)`: start a
   detached watcher for a config file. It is finite: it exits when the run ends or at its deadline.
-  For a first try use `once=True, dry=True`. Use `rules_only=True` when no LLM login is set up.
+  For a first try use `once=True, dry=True, rules_only=True`. Use `rules_only=True` when no LLM login is set up.
+  It returns within about 10 s; read the results with `tail_alerts`. Inline `overrides` may lower caps and
+  deadlines or switch the judge off, never raise them.
 - `stop_watch(run)`: stop only that watcher. It never touches the training run.
 - `meter()`: Codex usage and credits (no model call). Only matters for openai-codex judge models.
 

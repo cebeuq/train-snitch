@@ -1,5 +1,7 @@
 # train-snitch for OpenAI Codex (CLI, IDE extension, app)
 
+0. Get the repo files (the plugin/skill files below live in a clone, not in the pip package):
+   `git clone https://github.com/cebeuq/train-snitch && cd train-snitch/integrations/codex`
 1. Install the server once: `pipx install "train-snitch[mcp] @ git+https://github.com/cebeuq/train-snitch"`
 2. Register it:
    ```bash
