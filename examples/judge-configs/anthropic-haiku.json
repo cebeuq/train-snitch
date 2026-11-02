@@ -1,0 +1,11 @@
+{
+  "_about": "Anthropic API key (or Pi's /login anthropic).",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: anthropic-haiku",
+  "judge": {
+    "enabled": true,
+    "model": "anthropic/claude-haiku-4-5",
+    "api_key_env": "ANTHROPIC_API_KEY",
+    "cost_cap_usd": 2
+  }
+}

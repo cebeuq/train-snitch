@@ -1,0 +1,23 @@
+{
+  "_about": "Ollama on this machine through its OpenAI-compatible /v1 endpoint (no key, $0).",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: ollama-local",
+  "judge": {
+    "enabled": true,
+    "model": "ollama/qwen3:8b",
+    "api": "openai-completions",
+    "base_url": "http://127.0.0.1:11434/v1",
+    "no_auth": true,
+    "compat": {
+      "supportsDeveloperRole": false,
+      "supportsReasoningEffort": false
+    },
+    "model_info": {
+      "context_window": 32768,
+      "max_tokens": 1024
+    },
+    "structured_output": "schema",
+    "timeout_s": 120,
+    "request_timeout_s": 110
+  }
+}

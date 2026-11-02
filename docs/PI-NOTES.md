@@ -1,5 +1,9 @@
 # Pi 0.80.10 as the judge backend: notes
 
+> Update, Nov 1: other providers, custom endpoints and fallbacks now go through Pi's own provider config
+> (`ModelRuntime.registerProvider`, in memory); see [JUDGE-MODELS.md](JUDGE-MODELS.md). The bridge also honours Pi's
+> `PI_CODING_AGENT_DIR` (judge key `pi_agent_dir`).
+>
 > Update, Oct 31 8:20 PM: the budget below ("60 calls, 1 per 15 min") was replaced. The judge now runs every
 > 60 s by default, with a per-run Codex credit cap (default 150) and back-off to rules-only after 3 failed calls in
 > a row; see README "The judge". Two live calls through `judge/pi_judge.mjs` (single + agent mode) confirmed

@@ -1,0 +1,11 @@
+{
+  "_about": "DeepSeek API.",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: deepseek",
+  "judge": {
+    "enabled": true,
+    "model": "deepseek/deepseek-v4-flash",
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "cost_cap_usd": 1
+  }
+}

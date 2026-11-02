@@ -1,0 +1,11 @@
+{
+  "_about": "xAI API (or Pi's /login xai).",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: xai-grok",
+  "judge": {
+    "enabled": true,
+    "model": "xai/grok-4.3",
+    "api_key_env": "XAI_API_KEY",
+    "cost_cap_usd": 2
+  }
+}

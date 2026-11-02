@@ -1,0 +1,30 @@
+{
+  "_about": "Fallback chain: Luna first; on a missing model, missing login, error, rate limit or timeout try Haiku, then a local Ollama model.",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: chain-codex-anthropic-ollama",
+  "judge": {
+    "enabled": true,
+    "model": "openai-codex/gpt-6-luna",
+    "credit_cap": 150,
+    "cost_cap_usd": 3,
+    "fallbacks": [
+      "openai-codex/gpt-5.6-luna",
+      {
+        "model": "anthropic/claude-haiku-4-5",
+        "api_key_env": "ANTHROPIC_API_KEY"
+      },
+      {
+        "model": "ollama/qwen3:8b",
+        "api": "openai-completions",
+        "base_url": "http://127.0.0.1:11434/v1",
+        "no_auth": true,
+        "compat": {
+          "supportsDeveloperRole": false,
+          "supportsReasoningEffort": false
+        },
+        "structured_output": "schema"
+      }
+    ],
+    "fallback_cooldown_min": 15
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "_about": "llama.cpp `llama-server` (OpenAI-compatible).",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: llamacpp-server",
+  "judge": {
+    "enabled": true,
+    "model": "llamacpp/local",
+    "api": "openai-completions",
+    "base_url": "http://127.0.0.1:8080/v1",
+    "no_auth": true,
+    "compat": {
+      "supportsDeveloperRole": false,
+      "supportsReasoningEffort": false,
+      "maxTokensField": "max_tokens"
+    },
+    "model_info": {
+      "context_window": 16384,
+      "max_tokens": 1024
+    },
+    "structured_output": "schema",
+    "timeout_s": 120,
+    "request_timeout_s": 110
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "train-snitch",
+  "displayName": "train-snitch",
+  "version": "0.2.0",
+  "description": "Start, stop, list and read alerts from read-only ML training-run watchers.",
+  "license": "MIT",
+  "homepage": "https://github.com/cebeuq/train-snitch",
+  "keywords": ["mcp", "training", "watchdog"],
+  "suggestedPrompts": ["Is my training run healthy?", "Show new train-snitch alerts", "Start watching my run"]
+}

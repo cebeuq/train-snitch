@@ -105,6 +105,7 @@ class RuleTests(unittest.TestCase):
         return Engine(rule_list, self.cfg)
 
     def test_parse_local_ampm(self):
+        timeutil.set_tz("America/Los_Angeles")      # other tests' watchers reset the global zone
         a = timeutil.parse_local("2026-10-26 12:55:50 AM")
         b = timeutil.parse_local("2026-10-26 12:55:50 AM PDT")
         self.assertEqual(a, b)

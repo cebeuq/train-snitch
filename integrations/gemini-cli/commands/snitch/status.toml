@@ -1,0 +1,3 @@
+description = "Summarize train-snitch watchers and their new alerts"
+prompt = """Use the train-snitch MCP tools: call list_watches(), then tail_alerts(run, min_severity="warn") for each live watcher.
+Report critical alerts first, quoting what, evidence and action. Never stop the training run. Extra focus: {{args}}"""

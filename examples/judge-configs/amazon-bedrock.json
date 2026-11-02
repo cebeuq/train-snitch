@@ -1,0 +1,10 @@
+{
+  "_about": "Bedrock: Pi uses the standard AWS credential chain (AWS_PROFILE or AWS keys) and AWS_REGION.",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: amazon-bedrock",
+  "judge": {
+    "enabled": true,
+    "model": "amazon-bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "cost_cap_usd": 2
+  }
+}

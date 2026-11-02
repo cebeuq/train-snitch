@@ -1,0 +1,16 @@
+{
+  "_about": "OpenRouter gateway; pick any id from `pi --list-models openrouter`.",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: openrouter",
+  "judge": {
+    "enabled": true,
+    "model": "openrouter/google/gemini-2.5-flash",
+    "api_key_env": "OPENROUTER_API_KEY",
+    "compat": {
+      "openRouterRouting": {
+        "data_collection": "deny"
+      }
+    },
+    "cost_cap_usd": 2
+  }
+}

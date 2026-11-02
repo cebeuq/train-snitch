@@ -1,0 +1,6 @@
+---
+description: When the user mentions a training run, a watchdog, run health or train-snitch alerts, use the train-snitch MCP tools and never stop the run yourself.
+alwaysApply: false
+---
+Use the train-snitch skill and its MCP tools (list_watches(), tail_alerts(run), start_watch(config), stop_watch(run)).
+Read-only: never stop, kill or destroy the training run or a cloud instance because of an alert; recommend it and let the user decide.

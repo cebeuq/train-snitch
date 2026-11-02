@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "train-snitch": {
+      "command": "train-snitch-mcp",
+      "args": [],
+      "env": {
+        "TRAIN_SNITCH_CONFIG_DIRS": "${TRAIN_SNITCH_CONFIG_DIRS}",
+        "TRAIN_SNITCH_OUT_DIRS": "${TRAIN_SNITCH_OUT_DIRS}"
+      },
+      "variables": [
+        {"name": "TRAIN_SNITCH_CONFIG_DIRS", "title": "Config folders",
+         "description": "Absolute folder(s), ':'-separated, that train-snitch may start run configs from",
+         "link": "https://github.com/cebeuq/train-snitch/blob/main/docs/HARNESSES.md"},
+        {"name": "TRAIN_SNITCH_OUT_DIRS", "title": "Output folders",
+         "description": "Absolute folder(s), ':'-separated, holding watcher out_dirs (alerts, status)",
+         "link": "https://github.com/cebeuq/train-snitch/blob/main/docs/HARNESSES.md"}
+      ]
+    }
+  }
+}

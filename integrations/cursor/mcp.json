@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "train-snitch": {
+      "type": "stdio",
+      "command": "train-snitch-mcp",
+      "args": [],
+      "env": {
+        "TRAIN_SNITCH_CONFIG_DIRS": "${env:TRAIN_SNITCH_CONFIG_DIRS}",
+        "TRAIN_SNITCH_OUT_DIRS": "${env:TRAIN_SNITCH_OUT_DIRS}",
+        "TRAIN_SNITCH_ENV_FILE": "${env:TRAIN_SNITCH_ENV_FILE}"
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "_about": "Groq (fast open-weight models).",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: groq",
+  "judge": {
+    "enabled": true,
+    "model": "groq/openai/gpt-oss-20b",
+    "api_key_env": "GROQ_API_KEY",
+    "temperature": 0,
+    "cost_cap_usd": 1
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "_about": "LM Studio's local server.",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: lmstudio",
+  "judge": {
+    "enabled": true,
+    "model": "lmstudio/qwen3-8b",
+    "api": "openai-completions",
+    "base_url": "http://127.0.0.1:1234/v1",
+    "no_auth": true,
+    "compat": {
+      "supportsDeveloperRole": false,
+      "supportsReasoningEffort": false
+    },
+    "model_info": {
+      "context_window": 32768,
+      "max_tokens": 1024
+    },
+    "timeout_s": 120,
+    "request_timeout_s": 110
+  }
+}

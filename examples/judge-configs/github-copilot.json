@@ -1,0 +1,11 @@
+{
+  "_about": "A GitHub Copilot subscription through Pi's /login github-copilot (no key in env).",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: github-copilot",
+  "judge": {
+    "enabled": true,
+    "model": "github-copilot/gpt-5.4-mini",
+    "meter": "none",
+    "max_calls": 600
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "_about": "A vLLM server (local or on the GPU box); the id is the served model name.",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: vllm",
+  "judge": {
+    "enabled": true,
+    "model": "vllm/my-served-model",
+    "api": "openai-completions",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "api_key_env": "VLLM_API_KEY",
+    "compat": {
+      "supportsDeveloperRole": false
+    },
+    "model_info": {
+      "context_window": 32768,
+      "max_tokens": 1024
+    },
+    "structured_output": "schema"
+  }
+}

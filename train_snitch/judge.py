@@ -16,6 +16,8 @@ Guards (rules never stop; the judge is advisory and never suppresses a rule aler
   The balance is account-wide, so other Codex use in the same window counts too (conservative).
 - `max_consecutive_errors` failed calls in a row (default 3), or a provider usage-limit refusal: same back-off.
 - `max_calls` model turns per run: hard backstop.
+- `cost_cap_usd` (any provider): Pi's own per-call USD cost summed over the run; above it -> same back-off.
+Model choice (any Pi provider, custom endpoints, fallbacks) is validated and mapped in `llm.py`.
 """
 from __future__ import annotations
 
@@ -27,6 +29,7 @@ import subprocess
 import sys
 import time
 
+from . import llm
 from . import meter as codex_meter
 from .redact import deep as redact_deep, redact
 from .engine import SEV
@@ -34,6 +37,14 @@ from .timeutil import fmt12
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PI_PKG_NAME = "@earendil-works/pi-coding-agent"
+
+
+def asset_dir() -> str:
+    """judge/ in a checkout; train_snitch/_judge/ (the same files) in an installed wheel."""
+    d = os.path.join(REPO, "judge")
+    if os.path.isfile(os.path.join(d, "pi_judge.mjs")):
+        return d
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "_judge")
 
 
 def find_pi_pkg(explicit: str | None = None) -> str:
@@ -62,9 +73,9 @@ class Judge:
                      "meter": None, "probe_last_t": 0, "topics": {}, "last_verdict": None, "last_step": None,
                      "decisions": {"ok": 0, "watch": 0, "snitch": 0}}.items():
             self.st.setdefault(k, v)
-        self.meter_fn = meter_fn or (codex_meter.read_summary if self.j.get("meter", "codex") == "codex" else (lambda: None))
+        self.meter_fn = meter_fn or (codex_meter.read_summary if llm.meter_kind(self.j) == "codex" else (lambda: None))
         self.bridge_fn = bridge_fn or self._bridge
-        with open(os.path.join(REPO, "judge", "system-prompt.md")) as f:
+        with open(os.path.join(asset_dir(), "system-prompt.md")) as f:
             self.system_prompt = f.read()
         self._pi = None
 
@@ -81,7 +92,7 @@ class Judge:
             if self.st.get("start_credits") is None:
                 self.st["start_credits"] = m["credits"]
             return self._credit_check(m["credits"])
-        if self.j.get("meter", "codex") == "codex":
+        if llm.meter_kind(self.j) == "codex":
             self.log("judge: Codex meter unreadable at start; the credit cap uses response headers only")
         return []
 
@@ -156,6 +167,7 @@ class Judge:
         self.st["tokens_in"] += int(u.get("input") or 0)
         self.st["tokens_out"] += int(u.get("output") or 0)
         self.st["cost_usd"] = round(self.st.get("cost_usd", 0.0) + float(u.get("cost") or 0), 6)
+        self._cooldowns(t, res.get("attempts"))
         if res.get("probes_run"):
             self.st["probe_last_t"] = t
         hdr = res.get("headers") or {}
@@ -167,9 +179,14 @@ class Judge:
         err = res.get("error") or ""
         v = res.get("verdict")
         self._journal(t, mode, trig, res)
+        cap_usd = self.j.get("cost_cap_usd")
+        if cap_usd is not None and self.st["cost_usd"] > float(cap_usd):
+            out += self._off(f"judge spend ${self.st['cost_usd']:.4f} (Pi's cost figure) over the per-run cap of ${float(cap_usd):g}")
         if self.st.get("rules_only"):
             return out
-        if re.search(r"usage_limit|rate_limit|429|insufficient|quota|credits? (?:exhausted|depleted)", err, re.I):
+        att = res.get("attempts")      # model chain: refused only when every candidate was rate-limited
+        if (all(a.get("error_kind") == "rate_limit" for a in att) if att else
+                re.search(r"usage_limit|rate_limit|429|insufficient|quota|credits? (?:exhausted|depleted)", err, re.I)):
             return out + self._off(f"provider refused: {err[:120]}")
         if not v:
             self.st["errors_in_row"] += 1
@@ -228,7 +245,8 @@ class Judge:
         ev.append(self.budget_line())
         r = {"t": t, "time": fmt12(t, date=True), "status": status, "severity": sev, "rule": f"judge:{topic}",
              "key": f"judge:{topic}", "what": what[:300], "evidence": ev, "action": str(v.get("action", ""))[:300],
-             "source": "judge", "since": fmt12(since or t, date=True), "count": count, "judge_model": self.j.get("model"),
+             "source": "judge", "since": fmt12(since or t, date=True), "count": count,
+             "judge_model": res.get("model_used") or self.j.get("model"),
              "decision": v.get("decision"), "assessment": v.get("assessment")}
         if about:
             r["about"] = about
@@ -240,6 +258,9 @@ class Judge:
         row = {"t": t, "time": fmt12(t, seconds=True), "mode": mode, "trigger": [r["key"] for r in trig],
                "verdict": res.get("verdict"), "error": res.get("error"), "turns": res.get("turns"), "ms": res.get("ms"),
                "usage": res.get("usage"), "credits_used": self.credits_used(), "probes_run": res.get("probes_run")}
+        for k in ("model_used", "attempts"):          # only present with a model chain (docs/JUDGE-MODELS.md)
+            if res.get(k):
+                row[k] = res[k]
         try:
             with open(os.path.join(self.out_dir, "judge.jsonl"), "a") as f:
                 f.write(json.dumps(row, default=str) + "\n")
@@ -269,17 +290,44 @@ class Judge:
                       for p in (ctx.get("probes") or [])]   # probe output is redacted before the model sees it
         if self._pi is None:
             self._pi = find_pi_pkg(self.j.get("pi_pkg"))
-        return {"model": self.j.get("model"), "mode": mode, "max_turns": turns, "reasoning_effort": self.j.get("reasoning_effort", "none"),
-                "timeout_ms": int(float(self.j.get("timeout_s", 90)) * 1000), "system_prompt": self.system_prompt,
-                "user_message": msg, "data": redact_deep(ctx.get("data") or {}) if mode == "agent" else {}, "probes": probes,
-                "pi_pkg": self._pi, "max_tokens": int(self.j.get("max_tokens", 500))}
+        req = {"model": self.j.get("model"), "mode": mode, "max_turns": turns, "reasoning_effort": self.j.get("reasoning_effort", "none"),
+               "timeout_ms": int(float(self.j.get("timeout_s", 90)) * 1000), "system_prompt": self.system_prompt,
+               "user_message": msg, "data": redact_deep(ctx.get("data") or {}) if mode == "agent" else {}, "probes": probes,
+               "pi_pkg": self._pi, "max_tokens": int(self.j.get("max_tokens", 500))}
+        if llm.uses_candidates(self.j):     # model chain / custom provider: extra keys; without them the 0.1 request
+            req["candidates"] = self.candidates(t)
+            req["fallback_on"] = list(self.j.get("fallback_on") or llm.DEFAULT_FALLBACK_ON)
+        return req
+
+    def candidates(self, t: float) -> list[dict]:
+        """Bridge candidates in order, minus those cooling down after a rate limit / missing auth. When every
+        candidate is cooling down, all are sent (the cooldown is a hint, never a reason to skip a judgment)."""
+        cands = [llm.bridge_candidate(c, self.j) for c in llm.candidates(self.j)]
+        cool = self.st.get("cooldown") or {}
+        live = [c for c in cands if cool.get(c["model"], 0) <= t]
+        return live or cands
+
+    def _cooldowns(self, t, attempts):
+        if not attempts:
+            return
+        mins = float(self.j.get("fallback_cooldown_min") if self.j.get("fallback_cooldown_min") is not None else 15)
+        cool = self.st.setdefault("cooldown", {})
+        for a in attempts:
+            if a.get("error_kind") in ("rate_limit", "no_auth", "not_found") and a.get("model"):
+                cool[a["model"]] = t + mins * 60
+                self.log(f"judge: {a['model']} {a['error_kind']}; skipped for {mins:g} min while others are left")
+        for k in [k for k, until in cool.items() if until <= t]:
+            del cool[k]
 
     def _bridge(self, req: dict) -> dict:
         node = self.j.get("node") or shutil.which("node") or "/opt/homebrew/bin/node"
-        bridge = self.j.get("bridge") or os.path.join(REPO, "judge", "pi_judge.mjs")
+        bridge = self.j.get("bridge") or os.path.join(asset_dir(), "pi_judge.mjs")
+        env = None
+        if self.j.get("pi_agent_dir"):      # Pi's own variable for its config dir (auth.json, models.json)
+            env = dict(os.environ, PI_CODING_AGENT_DIR=os.path.expanduser(self.j["pi_agent_dir"]))
         try:
             cp = subprocess.run([node, bridge], input=json.dumps(req, default=str), capture_output=True, text=True,
-                                timeout=req["timeout_ms"] / 1000 + 30, cwd=REPO)
+                                timeout=req["timeout_ms"] / 1000 + 30, cwd=REPO, env=env)
         except (OSError, subprocess.TimeoutExpired) as e:
             return {"error": f"bridge: {e}", "turns": 1}
         try:

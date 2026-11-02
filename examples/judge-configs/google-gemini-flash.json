@@ -1,0 +1,12 @@
+{
+  "_about": "Gemini API key; strict JSON schema through Pi's Google request.",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: google-gemini-flash",
+  "judge": {
+    "enabled": true,
+    "model": "google/gemini-3.5-flash",
+    "api_key_env": "GEMINI_API_KEY",
+    "structured_output": "schema",
+    "cost_cap_usd": 1
+  }
+}

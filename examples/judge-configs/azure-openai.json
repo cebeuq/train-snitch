@@ -1,0 +1,10 @@
+{
+  "_about": "Azure OpenAI (Responses): AZURE_OPENAI_API_KEY + AZURE_OPENAI_BASE_URL or AZURE_OPENAI_RESOURCE_NAME; the id is your deployment.",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: azure-openai",
+  "judge": {
+    "enabled": true,
+    "model": "azure-openai-responses/gpt-5.4-mini",
+    "cost_cap_usd": 2
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "_about": "OpenAI platform API key (Responses API, strict schema automatically).",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: openai-api",
+  "judge": {
+    "enabled": true,
+    "model": "openai/gpt-5.4-mini",
+    "api_key_env": "OPENAI_API_KEY",
+    "reasoning": "minimal",
+    "cost_cap_usd": 2
+  }
+}

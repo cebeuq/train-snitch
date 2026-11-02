@@ -67,7 +67,7 @@ DEFAULTS: dict = {
     "benign_patterns": [r"Warning: An unbatched P2P op", r"libpng warning", r"Welcome to vast\.ai", r"destroy_process_group"],
     "judge": {
         "enabled": True,
-        "model": "openai-codex/gpt-6-luna",   # provider/id as Pi knows it (e.g. anthropic/<haiku id> with "meter": "none")
+        "model": "openai-codex/gpt-6-luna",   # provider/id as Pi knows it (`pi --list-models`); see docs/JUDGE-MODELS.md
         "every_s": 60,                   # cadence: one judgment per this many seconds (never more often than cycle_s)
         "skip_unchanged": False,         # true: skip a tick when nothing changed (still at least every max_quiet_min)
         "max_quiet_min": 15,
@@ -86,7 +86,24 @@ DEFAULTS: dict = {
         "node": None,                    # node binary; None = from PATH
         "pi_pkg": None,                  # Pi package dir; None = $PI_PKG or `npm root -g`
         "bridge": None,                  # None = <repo>/judge/pi_judge.mjs
-        "meter": "codex",                # codex | none
+        "meter": "auto",                 # auto (= codex when an openai-codex model is in the chain) | codex | none
+        # ---- other providers / models (docs/JUDGE-MODELS.md). All None = the 0.1 request, unchanged.
+        "api": None,                     # custom endpoint API: openai-completions | openai-responses | anthropic-messages | google-generative-ai
+        "base_url": None,                # endpoint (custom provider, or a proxy in front of a built-in one)
+        "api_key_env": None,             # NAME of the env var holding the key (Pi resolves it; keys never go in a config)
+        "no_auth": False,                # keyless local server (Ollama, llama.cpp, LM Studio)
+        "headers": None,                 # extra headers; secret values must be "$ENV_NAME"
+        "compat": None,                  # Pi compat flags, passed unchanged (e.g. supportsDeveloperRole: false)
+        "model_info": None,              # custom models: context_window, max_tokens, reasoning, input, cost{input,output}
+        "reasoning": None,               # Pi thinking level off..max; None = legacy reasoning_effort ("none" = off)
+        "temperature": None,
+        "request_timeout_s": None,       # per-request timeout inside Pi (default 60)
+        "structured_output": None,       # auto | schema | prompt (auto: strict JSON schema where the API is known to take it)
+        "fallbacks": None,               # ["provider/id", {...same keys as above...}], tried in order on failure
+        "fallback_on": None,             # default: not_found, no_auth, error, rate_limit, timeout (+ unparseable, config)
+        "fallback_cooldown_min": None,   # skip a candidate this long after rate_limit / no_auth (default 15)
+        "cost_cap_usd": None,            # any provider: Pi's per-call USD cost summed per run; above it -> rules-only
+        "pi_agent_dir": None,            # Pi config dir for the bridge (sets PI_CODING_AGENT_DIR); None = ~/.pi/agent
     },
     "channels": {
         "jsonl": True, "latest": True,

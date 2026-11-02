@@ -1,0 +1,9 @@
+{
+  "name": "train-snitch",
+  "version": "0.2.0",
+  "description": "Start, stop, list and read alerts from train-snitch, a read-only watchdog for ML training runs",
+  "homepage": "https://github.com/cebeuq/train-snitch",
+  "repository": "https://github.com/cebeuq/train-snitch",
+  "license": "MIT",
+  "keywords": ["mcp", "training", "watchdog", "ml"]
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "train-snitch": {
+      "type": "local",
+      "command": ["train-snitch-mcp"],
+      "enabled": true,
+      "timeout": 30000,
+      "environment": {
+        "TRAIN_SNITCH_CONFIG_DIRS": "{env:TRAIN_SNITCH_CONFIG_DIRS}",
+        "TRAIN_SNITCH_OUT_DIRS": "{env:TRAIN_SNITCH_OUT_DIRS}",
+        "TRAIN_SNITCH_ENV_FILE": "{env:TRAIN_SNITCH_ENV_FILE}"
+      }
+    }
+  }
+}

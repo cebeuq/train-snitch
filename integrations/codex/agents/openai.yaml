@@ -1,0 +1,6 @@
+# Optional: copy next to SKILL.md (<skills dir>/train-snitch/agents/openai.yaml) for a nicer name in Codex.
+interface:
+  display_name: "train-snitch"
+  short_description: "Read-only training-run watchdog"
+policy:
+  allow_implicit_invocation: true

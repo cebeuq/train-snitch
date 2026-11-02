@@ -1,0 +1,11 @@
+{
+  "_about": "Mistral API.",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: mistral",
+  "judge": {
+    "enabled": true,
+    "model": "mistral/mistral-small-latest",
+    "api_key_env": "MISTRAL_API_KEY",
+    "cost_cap_usd": 1
+  }
+}

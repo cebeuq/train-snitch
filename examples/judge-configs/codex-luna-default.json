@@ -1,0 +1,13 @@
+{
+  "_about": "Default: GPT-6 Luna through Pi's ChatGPT/Codex login, with the bundled gpt-5.6-luna as a fallback (Luna 6 needs `pi update --models` once).",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: codex-luna-default",
+  "judge": {
+    "enabled": true,
+    "model": "openai-codex/gpt-6-luna",
+    "credit_cap": 150,
+    "fallbacks": [
+      "openai-codex/gpt-5.6-luna"
+    ]
+  }
+}

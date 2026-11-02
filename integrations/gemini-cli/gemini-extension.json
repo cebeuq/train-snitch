@@ -1,0 +1,25 @@
+{
+  "name": "train-snitch",
+  "version": "0.2.0",
+  "description": "Drive train-snitch, a read-only watchdog for ML training runs",
+  "mcpServers": {
+    "train-snitch": {
+      "command": "train-snitch-mcp",
+      "args": [],
+      "env": {
+        "TRAIN_SNITCH_CONFIG_DIRS": "${TRAIN_SNITCH_CONFIG_DIRS}",
+        "TRAIN_SNITCH_OUT_DIRS": "${TRAIN_SNITCH_OUT_DIRS}",
+        "TRAIN_SNITCH_ENV_FILE": "${TRAIN_SNITCH_ENV_FILE}"
+      }
+    }
+  },
+  "contextFileName": "GEMINI.md",
+  "settings": [
+    {"name": "Config folders", "description": "Absolute folder(s), ':'-separated, train-snitch may start configs from",
+     "envVar": "TRAIN_SNITCH_CONFIG_DIRS", "sensitive": false},
+    {"name": "Output folders", "description": "Absolute folder(s), ':'-separated, holding watcher out_dirs",
+     "envVar": "TRAIN_SNITCH_OUT_DIRS", "sensitive": false},
+    {"name": "Env file", "description": "Optional private (chmod 600) KEY=VALUE file with judge API keys",
+     "envVar": "TRAIN_SNITCH_ENV_FILE", "sensitive": false}
+  ]
+}

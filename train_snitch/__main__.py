@@ -1,10 +1,13 @@
 """CLI.
 
-  python3 -m train_snitch run    CONFIG [--once] [--rules-only] [--dry] [--test-alert]   watch (finite; exits at run end/deadline)
+  python3 -m train_snitch run    CONFIG [--once] [--rules-only] [--dry] [--test-alert] [--overrides JSON]
+                                                                          watch (finite; exits at run end/deadline)
+  python3 -m train_snitch check  CONFIG [--overrides JSON]                validate a config + show the judge model chain
   python3 -m train_snitch replay CONFIG INCIDENT_DIR                      replay a recorded incident, print alerts
   python3 -m train_snitch tail   OUT_DIR [--min warn] [--from-start]      follow alerts (for an agent's Monitor tool)
   python3 -m train_snitch meter                                           Codex usage meter + credits (no model call)
   python3 -m train_snitch eval-judge CONFIG [--once] [--dry] [--no-act]    vision-model judge of eval image sets
+  python3 -m train_snitch mcp                                             MCP stdio server (needs the [mcp] extra)
 """
 from __future__ import annotations
 
@@ -20,11 +23,40 @@ from .engine import SEV
 
 def cmd_run(a):
     from .watcher import Watcher
-    cfg = cfgmod.load(a.config)
+    cfg = cfgmod.load(a.config, _overrides(a))
     if a.out:
         cfg["out_dir"] = os.path.abspath(a.out)
     w = Watcher(cfg, rules_only=a.rules_only, dry=a.dry)
     print(w.run(once=a.once, test_alert=a.test_alert))
+
+
+def _overrides(a):
+    if not getattr(a, "overrides", None):
+        return None
+    try:
+        ov = json.loads(a.overrides)
+    except ValueError as e:
+        raise SystemExit(f"--overrides must be a JSON object: {e}")
+    if not isinstance(ov, dict):
+        raise SystemExit("--overrides must be a JSON object")
+    return ov
+
+
+def cmd_check(a):
+    from . import llm
+    cfg = cfgmod.load(a.config, _overrides(a))
+    j = cfg["judge"]
+    errs, warns = llm.validate(j) if j.get("enabled") else ([], [])
+    print(json.dumps({"ok": not errs, "errors": errs, "warnings": warns, "name": cfg.get("name"), "out_dir": cfg["out_dir"],
+                      "judge": llm.describe(j) if j.get("enabled") else "off (rules only)",
+                      "meter": llm.meter_kind(j) if j.get("enabled") else None}, indent=1))
+    if errs:
+        sys.exit(1)
+
+
+def cmd_mcp(_a):
+    from .mcp_server import main as mcp_main
+    mcp_main()
 
 
 def cmd_replay(a):
@@ -153,7 +185,14 @@ def main(argv=None):
     r.add_argument("--dry", action="store_true", help="no desktop notification / webhook / command hook")
     r.add_argument("--out", help="override out_dir")
     r.add_argument("--test-alert", action="store_true", help="send one info TEST alert through every channel at start")
+    r.add_argument("--overrides", help="JSON object merged over the config (e.g. a judge model for this run)")
     r.set_defaults(fn=cmd_run)
+    r = sp.add_parser("check", help="validate a config and print the judge model chain (no model call)")
+    r.add_argument("config")
+    r.add_argument("--overrides")
+    r.set_defaults(fn=cmd_check)
+    r = sp.add_parser("mcp", help="run the MCP stdio server for agent harnesses (pip install 'train-snitch[mcp]')")
+    r.set_defaults(fn=cmd_mcp)
     r = sp.add_parser("replay")
     r.add_argument("config")
     r.add_argument("incident")

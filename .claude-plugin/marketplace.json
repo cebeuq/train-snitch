@@ -1,0 +1,11 @@
+{
+  "name": "train-snitch",
+  "owner": { "name": "train-snitch maintainers" },
+  "plugins": [
+    {
+      "name": "train-snitch",
+      "source": "./integrations/claude-code",
+      "description": "Read-only watchdog for ML training runs: MCP tools + skill"
+    }
+  ]
+}

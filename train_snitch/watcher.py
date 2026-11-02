@@ -17,6 +17,7 @@ from . import config as cfgmod
 from . import rules as rulemod
 from . import timeutil
 from . import digest as digestmod
+from . import llm
 from .channels import Channels
 from .engine import Engine, SEV
 from .judge import Judge
@@ -34,6 +35,10 @@ def _sig(signum, _frame):
 class Watcher:
     def __init__(self, cfg: dict, rules_only: bool = False, dry: bool = False):
         self.cfg = cfg
+        if cfg["judge"].get("enabled") and not rules_only:
+            errs, _warns = llm.validate(cfg["judge"])
+            if errs:
+                raise SystemExit("invalid judge config (docs/JUDGE-MODELS.md):\n- " + "\n- ".join(errs))
         timeutil.set_tz(cfg.get("timezone"))
         rulemod.set_vars(cfg.get("vars"))
         self.out = cfg["out_dir"]

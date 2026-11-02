@@ -1,0 +1,21 @@
+{
+  "_about": "An Anthropic-Messages-compatible proxy in front of Claude.",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: anthropic-compatible-proxy",
+  "judge": {
+    "enabled": true,
+    "model": "claude-proxy/claude-haiku-4-5",
+    "api": "anthropic-messages",
+    "base_url": "https://claude-proxy.example.com",
+    "api_key_env": "CLAUDE_PROXY_KEY",
+    "model_info": {
+      "context_window": 200000,
+      "max_tokens": 1024,
+      "cost": {
+        "input": 1,
+        "output": 5
+      }
+    },
+    "cost_cap_usd": 2
+  }
+}

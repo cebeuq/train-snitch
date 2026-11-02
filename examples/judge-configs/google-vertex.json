@@ -1,0 +1,11 @@
+{
+  "_about": "Vertex AI: Application Default Credentials + GOOGLE_CLOUD_PROJECT / GOOGLE_CLOUD_LOCATION.",
+  "extends": "../generic/local-run.json",
+  "name": "judge example: google-vertex",
+  "judge": {
+    "enabled": true,
+    "model": "google-vertex/gemini-3.5-flash",
+    "structured_output": "schema",
+    "cost_cap_usd": 1
+  }
+}

@@ -9,6 +9,13 @@ what changed and decides: **ok**, **watch**, or **snitch**. Snitches and rule al
 It never changes the run: no stop, no kill, no destroy. It only reads and reports. It exits by itself when the
 run ends or at a deadline.
 
+- **Any agent harness can drive it** through a small MCP server (start, stop, list, status, alerts): Claude Code,
+  GitHub Copilot CLI, Cursor, OpenAI Codex, Google Antigravity, plus Gemini CLI and OpenCode.
+  See [docs/HARNESSES.md](docs/HARNESSES.md).
+- **Any LLM Pi can reach can be the judge**: Codex/Luna (default), Anthropic, Gemini, OpenAI, OpenRouter, Groq,
+  Bedrock, Azure, Vertex, local Ollama / vLLM / llama.cpp / LM Studio, your own gateway, with fallbacks and spend
+  caps. See [docs/JUDGE-MODELS.md](docs/JUDGE-MODELS.md).
+
 ```
 every cycle (default 60 s)
   probes    read-only: one batched file read per host (local, or over ssh), plus fixed commands
@@ -30,9 +37,19 @@ Needs Python 3.10+ (stdlib only, nothing to install). The judge also needs Node 
 (`npm i -g @earendil-works/pi-coding-agent`, logged in to a provider; Luna uses Pi's Codex / ChatGPT login).
 Without Pi, use `--rules-only`.
 
+Install as a tool (optional; the `mcp` extra adds the MCP server for agent harnesses):
+
+```bash
+pipx install "train-snitch[mcp] @ git+https://github.com/cebeuq/train-snitch"   # train-snitch + train-snitch-mcp
+```
+
+Or run from a checkout:
+
 ```bash
 git clone https://github.com/cebeuq/train-snitch && cd train-snitch
 python3 -I -m unittest discover -s tests       # offline, no model calls (ffmpeg needed for the sheet tests)
+# or everything (MCP SDK, Node + Pi bridge tests, ffmpeg) in a container:
+# docker build -f tests/docker/Dockerfile -t train-snitch-test . && docker run --rm --network none train-snitch-test
 cp examples/generic/remote-box.json my-run.json   # edit hosts / paths / sources
 python3 -I bin/train-snitch run my-run.json --once --rules-only --dry     # one cycle: no LLM, no notifications
 python3 -I bin/train-snitch run my-run.json                              # foreground, until the run ends
@@ -49,6 +66,28 @@ Other commands:
 | `train-snitch replay CONFIG INCIDENT_DIR` | replay a recorded incident through the rules and print the alerts |
 | `train-snitch tail OUT_DIR [--min warn\|critical] [--all]` | follow the alerts (for an agent's Monitor tool) |
 | `train-snitch meter` | Codex usage meter + credit balance, without a model call |
+| `train-snitch check CONFIG` | validate a config and print the judge model chain (no model call) |
+| `train-snitch run CONFIG --overrides JSON` | merge a small JSON object over the config (e.g. a judge model) |
+| `train-snitch mcp` / `train-snitch-mcp` | MCP stdio server for agent harnesses (needs the `mcp` extra) |
+
+## Quick start per agent harness
+
+Install `train-snitch-mcp` (above), point it at your folders, register it, and add the skill. Full steps in each
+folder's README under [integrations/](integrations):
+
+```bash
+export TRAIN_SNITCH_CONFIG_DIRS=/ABS/PATH/configs TRAIN_SNITCH_OUT_DIRS=/ABS/PATH/runs
+claude plugin marketplace add cebeuq/train-snitch && claude plugin install train-snitch@train-snitch   # Claude Code
+codex mcp add train-snitch --env TRAIN_SNITCH_CONFIG_DIRS=/ABS/PATH/configs -- train-snitch-mcp        # Codex
+copilot mcp add train-snitch --env TRAIN_SNITCH_CONFIG_DIRS=/ABS/PATH/configs -- train-snitch-mcp      # Copilot CLI
+agy plugin install ./integrations/antigravity && agy plugin enable train-snitch                       # Antigravity
+gemini extensions install ./integrations/gemini-cli                                                    # Gemini CLI
+# Cursor: integrations/cursor/mcp.json -> ~/.cursor/mcp.json; OpenCode: integrations/opencode/opencode.json
+```
+
+Then ask the agent "start watching configs/my-run.json" or "any new train-snitch alerts?". Tools: `list_watches`,
+`status`, `latest`, `tail_alerts`, `check_config`, `start_watch`, `stop_watch`, `meter`. Configs must sit under
+`TRAIN_SNITCH_CONFIG_DIRS`, the server has no shell, and `stop_watch` only stops watchers, never the run.
 
 ## For the main agent: follow the alerts
 
@@ -221,9 +260,12 @@ Free and deterministic; each has thresholds under `rules.<name>` (or `{"enabled"
   - `max_calls` (2000) is a hard backstop.
 - **Measured.** Measured live: about 900-1,200 tokens in and about 120 out per call, 2-3 s. That is roughly 0.001
   Codex credits per call, about 1-2 credits for a 14 h run at one call a minute.
-- **Other models.** `judge.model` = `provider/id`. For Claude Haiku, give Pi an Anthropic login and set
-  `anthropic/<haiku id>` and `"meter": "none"`. The meter and the JSON-schema trick are Codex-only; the bridge
-  falls back to parsing JSON from the reply. Details: `docs/PI-NOTES.md`.
+- **Other models.** `judge.model` = `provider/id` for any of Pi's providers, plus custom endpoints
+  (`api`, `base_url`, `api_key_env` / `no_auth`, `compat`, `model_info`), `reasoning`, `structured_output`,
+  `fallbacks` and `cost_cap_usd`. All of it maps onto Pi's own provider config; keys stay in Pi's login or env vars.
+  Non-Codex models use Pi's portable `completeSimple()`; the default Codex request is unchanged. The Codex meter
+  turns itself on only when an `openai-codex` model is in the chain. Details and 20 example configs:
+  [docs/JUDGE-MODELS.md](docs/JUDGE-MODELS.md); background: `docs/PI-NOTES.md`.
 
 ## Eval judge (vision model on sample images)
 
@@ -287,6 +329,12 @@ tens of thousands of tokens per set.
 - **`tests/test_fixes.py`:** fault injection (one adapter exception survived, repeated errors give up with an
   exit record, judge exception), `tail` exiting on a dead watcher, redaction everywhere, forced TEST delivery,
   and the webhook against a local server.
+- **`tests/test_llm.py`:** judge model config validation, the mapping onto Pi per provider, the unchanged
+  default request, fallback order / cooldown / spend cap, and the real bridge's model chain against Pi's faux
+  provider and a fake OpenAI-compatible server (schema, auth header, 429 fallback).
+- **`tests/test_harness.py`:** the control layer and its safety boundary, the MCP server through the official
+  SDK (in-process and over stdio: start, status, tail, stop), and the integration files (identical skills,
+  parseable configs, real tool names).
 - **`tests/test_generic.py`:**
   - the log parsers
   - the file reader (tail offsets, CSV, TensorBoard simple and tensor scalars, W&B dir, stat, disk)
@@ -319,11 +367,16 @@ tens of thousands of tokens per set.
 ## Layout
 
 ```
-train_snitch/   core: watcher, engine, rules, probes, reader, parsers, digest, judge, meter, channels, replay, CLI
+train_snitch/   core: watcher, engine, rules, probes, reader, parsers, digest, judge, llm (judge model config),
+                meter, channels, replay, control (harness control), mcp_server (MCP stdio server), CLI
   adapters/     base.py (interface), generic.py (declarative sources)
-judge/          pi_judge.mjs (Pi bridge), system-prompt.md
-examples/       generic/ (remote-box.json, local-run.json), eval-judge/ (generic-local.json)
-tests/          test_unit.py, test_fixes.py, test_generic.py, test_replay.py, replay/ (corpus + tools/)
-docs/           PI-NOTES.md (how the Pi integration was chosen)
+judge/          pi_judge.mjs (Pi bridge), system-prompt.md (shipped in the wheel as train_snitch/_judge)
+integrations/   one MCP registration + skill per harness: claude-code, copilot, cursor, codex, antigravity,
+                gemini-cli, opencode; skill/ (canonical SKILL.md), sync-skill.py
+.claude-plugin/ marketplace.json (Claude Code plugin marketplace)
+examples/       generic/, eval-judge/, judge-configs/ (20 judge model setups)
+tests/          test_unit.py, test_fixes.py, test_generic.py, test_replay.py, test_llm.py, test_harness.py,
+                replay/ (corpus + tools/), docker/Dockerfile (offline test image)
+docs/           HARNESSES.md, JUDGE-MODELS.md, PI-NOTES.md (how the Pi integration was chosen)
 bin/            train-snitch launcher
 ```
