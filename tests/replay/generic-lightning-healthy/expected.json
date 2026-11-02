@@ -1,0 +1,9 @@
+{
+ "verdicts": [],
+ "must_not": [
+  {
+   "severity_at_least": "warn"
+  }
+ ],
+ "max_alerts_warn_or_worse": 0
+}

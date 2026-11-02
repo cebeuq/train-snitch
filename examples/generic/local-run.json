@@ -1,0 +1,18 @@
+{
+  "name": "local Lightning run (example)",
+  "out_dir": "../../runs/local-run",
+  "cycle_s": 60,
+  "adapter": "generic",
+  "adapter_config": {
+    "sources": [
+      {"id": "trainer", "type": "log",       "path": "~/runs/mnist/train.log", "format": "lightning"},
+      {"id": "metrics", "type": "csv",       "path": "~/runs/mnist/lightning_logs/version_0/metrics.csv",
+                                             "step_key": "step", "loss_key": "train_loss", "val_loss_key": "val_loss"},
+      {"id": "wandb",   "type": "wandb_dir", "path": "~/runs/mnist/wandb", "loss_key": "train_loss", "val_loss_key": "val_loss"},
+      {"id": "proc",    "type": "process",   "pattern": "python.*train\\.py"},
+      {"id": "gpu",     "type": "gpu",       "tool": "nvidia-smi"},
+      {"id": "disk",    "type": "disk",      "path": "~/runs"}
+    ]
+  },
+  "judge": {"enabled": true, "model": "openai-codex/gpt-6-luna", "every_s": 60, "credit_cap": 150}
+}

@@ -1,0 +1,32 @@
+{
+  "name": "llama-sft on a rented 8-GPU box (example)",
+  "timezone": "America/Los_Angeles",
+  "out_dir": "../../runs/remote-box",
+  "cycle_s": 60,
+  "adapter": "generic",
+  "adapter_config": {
+    "run_id": "llama-sft-2026-10-31",
+    "hosts": {"box": {"ssh": "root@203.0.113.7", "port": 22, "options": ["-i", "~/.ssh/run_key"], "python": "python3"}},
+    "sources": [
+      {"id": "trainer",  "type": "log",         "path": "/workspace/run/train.log", "host": "box", "format": "hf"},
+      {"id": "tb",       "type": "tensorboard", "glob": "/workspace/run/runs/**/events.out.tfevents.*", "host": "box",
+                                                "loss_tag": "train/loss", "val_tag": "eval/loss"},
+      {"id": "proc",     "type": "process",     "pattern": "torchrun|accelerate launch|train\\.py", "host": "box"},
+      {"id": "gpu",      "type": "gpu",         "tool": "nvidia-smi", "host": "box"},
+      {"id": "kernel",   "type": "kernel_log",  "host": "box"},
+      {"id": "disk",     "type": "disk",        "path": "/workspace", "host": "box"},
+      {"id": "ckpt",     "type": "checkpoints", "glob": "/workspace/run/checkpoint-*", "stale_min": 90, "host": "box"},
+      {"id": "sync",     "type": "transfer",    "source": {"dir": "/workspace/run/upload", "host": "box"},
+                                                "dest": {"dir": "/mnt/storage/llama-sft"}, "pattern": "**/*", "partial_suffix": ".part"},
+      {"id": "vast",     "type": "vast",        "instance_id": 12345678, "credit": true},
+      {"id": "done",     "type": "done_file",   "path": "/workspace/run/DONE", "host": "box"}
+    ],
+    "train_stop_epoch": null,
+    "every_s": {"gpu": 60, "kernel_log": 120, "vast": 300}
+  },
+  "lifecycle": {"max_hours": 24},
+  "rules": {"disk_low": {"warn_gb": 100, "critical_gb": 30}, "train_stalled": {"warn_min": 15, "critical_min": 30, "first_row_grace_min": 45}},
+  "judge": {"enabled": true, "model": "openai-codex/gpt-6-luna", "every_s": 60, "credit_cap": 150},
+  "channels": {"notify": {"enabled": true, "min_severity": "warn", "title": "train-snitch: llama-sft"},
+               "webhook": {"url": null, "url_env": "TRAIN_SNITCH_WEBHOOK", "min_severity": "critical"}}
+}

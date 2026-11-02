@@ -1,0 +1,48 @@
+{
+ "verdicts": [
+  {
+   "cycle": 2,
+   "severity": "warn",
+   "rule": "log:grad_nonfinite",
+   "status": "new"
+  },
+  {
+   "cycle": 3,
+   "severity": "critical",
+   "rule": "loss_nonfinite",
+   "status": "new",
+   "what_contains": [
+    "NaN"
+   ]
+  },
+  {
+   "cycle": 4,
+   "severity": "critical",
+   "rule": "log:worker_failed",
+   "status": "new",
+   "evidence_contains": [
+    "exitcode: 1"
+   ]
+  },
+  {
+   "cycle": 6,
+   "severity": "critical",
+   "rule": "process_gone",
+   "status": "new",
+   "what_contains": [
+    "proc"
+   ]
+  }
+ ],
+ "must_not": [
+  {
+   "cycle": 0,
+   "severity_at_least": "warn"
+  },
+  {
+   "cycle": 1,
+   "severity_at_least": "warn"
+  }
+ ],
+ "max_alerts_warn_or_worse": 6
+}

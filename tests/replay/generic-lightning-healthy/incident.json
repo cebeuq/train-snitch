@@ -1,0 +1,10 @@
+{
+ "id": "generic-lightning-healthy",
+ "title": "NEGATIVE: healthy Lightning run with startup loss-scale overflows, a benign NCCL warning, a save pause",
+ "source": "synthetic",
+ "adapter": "generic",
+ "provenance": [
+  "synthetic: built by tests/replay/tools/make_generic_incidents.py in the frameworks' real log formats"
+ ],
+ "notes": "3 fp16 overflows at start stay under min_count 5; one GPU dip during a save is not 'idle'."
+}

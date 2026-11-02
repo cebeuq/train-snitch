@@ -1,0 +1,12 @@
+[project]
+name = "train-snitch"
+version = "0.1.0"
+description = "A cheap, read-only watcher for ML training runs: deterministic rules every cycle, a small LLM judge (via the Pi agent harness) only when something changes, and alerts a bigger agent can follow."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+train-snitch = "train_snitch.__main__:main"
+
+[tool.setuptools]
+packages = ["train_snitch", "train_snitch.adapters"]

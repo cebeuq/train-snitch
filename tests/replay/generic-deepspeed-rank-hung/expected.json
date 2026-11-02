@@ -1,0 +1,31 @@
+{
+ "verdicts": [
+  {
+   "cycle": 3,
+   "severity": "warn",
+   "rule": "gpu_util_drop",
+   "status": "new",
+   "what_contains": [
+    "GPU 1"
+   ],
+   "escalate_to_judge": true
+  },
+  {
+   "cycle": 4,
+   "severity": "critical",
+   "rule": "log:nccl_timeout",
+   "status": "new"
+  }
+ ],
+ "must_not": [
+  {
+   "cycle": 0,
+   "severity_at_least": "warn"
+  },
+  {
+   "cycle": 1,
+   "severity_at_least": "warn"
+  }
+ ],
+ "max_alerts_warn_or_worse": 3
+}

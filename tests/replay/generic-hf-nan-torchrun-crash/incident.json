@@ -1,0 +1,10 @@
+{
+ "id": "generic-hf-nan-torchrun-crash",
+ "title": "HF Trainer under torchrun: grad_norm NaN, then loss NaN, then ChildFailedError and the process is gone",
+ "source": "synthetic",
+ "adapter": "generic",
+ "provenance": [
+  "synthetic: built by tests/replay/tools/make_generic_incidents.py in the frameworks' real log formats"
+ ],
+ "notes": "process_gone needs 2 missed checks (min_cycles) so a flaky ps never pages."
+}

@@ -1,0 +1,15 @@
+{
+  "name": "replay: generic sources (framework logs + process + GPU + checkpoints)",
+  "timezone": "America/Los_Angeles",
+  "adapter": "generic",
+  "adapter_config": {
+    "sources": [
+      {"id": "trainer", "type": "log", "path": "/work/run/train.log", "format": "auto"},
+      {"id": "proc", "type": "process", "pattern": "torchrun|train\\.py"},
+      {"id": "gpu", "type": "gpu"},
+      {"id": "disk", "type": "disk", "path": "/work"},
+      {"id": "ckpt", "type": "checkpoints", "glob": "/work/run/checkpoint-*", "stale_min": 90}
+    ]
+  },
+  "judge": {"enabled": false}
+}

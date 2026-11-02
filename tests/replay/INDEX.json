@@ -1,0 +1,23 @@
+[
+ {
+  "id": "generic-deepspeed-rank-hung",
+  "source": "synthetic",
+  "title": "DeepSpeed rank 1 hangs: its GPU drops to 0 % while rank 0 spins at 100 %, then the NCCL watchdog fires",
+  "worst": "critical",
+  "cycles": 5
+ },
+ {
+  "id": "generic-hf-nan-torchrun-crash",
+  "source": "synthetic",
+  "title": "HF Trainer under torchrun: grad_norm NaN, then loss NaN, then ChildFailedError and the process is gone",
+  "worst": "critical",
+  "cycles": 7
+ },
+ {
+  "id": "generic-lightning-healthy",
+  "source": "synthetic",
+  "title": "NEGATIVE: healthy Lightning run with startup loss-scale overflows, a benign NCCL warning, a save pause",
+  "worst": "none",
+  "cycles": 10
+ }
+]

@@ -1,0 +1,15 @@
+{
+ "name": "my run",
+ "out_dir": "./out-eval",
+ "alerts_jsonl": [],
+ "lifecycle": {"max_hours": 12, "deadline_local": null, "last_step": null},
+ "poll_s": 120,
+ "source": {"dir": "/path/to/run/samples", "pattern": "^\\d+__(?P<step>\\d+)_(?P<idx>\\d+)\\.(?:jpg|png)$",
+            "group_size": 1, "expect": 8, "settle_s": 600},
+ "reference": {"dir": null},
+ "prompts": {"file": null},
+ "sheet": {"variants": [0], "rows_per_sheet": 4, "tile": 288},
+ "judge": {"model": "gpt-6.1-terra", "effort": "medium", "credit_cap": 200,
+           "subject": "an image model being fine-tuned"},
+ "act": "none"
+}

@@ -1,0 +1,10 @@
+{
+ "id": "generic-deepspeed-rank-hung",
+ "title": "DeepSpeed rank 1 hangs: its GPU drops to 0 % while rank 0 spins at 100 %, then the NCCL watchdog fires",
+ "source": "synthetic",
+ "adapter": "generic",
+ "provenance": [
+  "synthetic: built by tests/replay/tools/make_generic_incidents.py in the frameworks' real log formats"
+ ],
+ "notes": "Rows stop at cycle 2; the stall rule waits 15 min, the GPU asymmetry is the earlier signal."
+}
